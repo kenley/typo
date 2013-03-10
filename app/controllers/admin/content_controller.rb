@@ -24,6 +24,7 @@ class Admin::ContentController < Admin::BaseController
   end
 
   def new
+    @merge_allowed = false
     new_or_edit
   end
 
@@ -34,7 +35,56 @@ class Admin::ContentController < Admin::BaseController
       flash[:error] = _("Error, you are not allowed to perform this action")
       return
     end
+    @merge_allowed = current_user.admin?
     new_or_edit
+  end
+
+  def merge
+    # Check current article ID - valid id? exists? access ok?
+    article_id = params[:id]
+    @article = check_article(article_id)    # fills error msg if any
+    return if @article == nil
+
+    # Check second specified article ID - valid id? exists? access ok?
+    other_article_id = params[:merge_with]  # fills error msg if any
+    other_article = check_article(other_article_id)
+    return if other_article == nil
+
+    # can't merge article with itself
+    if article_id == other_article_id
+      redirect_to :action => 'index'
+      flash[:error] = _("Error, Cannot merge article with itself - Article ID: #{article_id}")
+      return
+    end
+
+    # Now merge content, author, comments ...
+    # delete the second article, reload for cached stuff etc.
+    if @article.merge_with(other_article_id) == false
+      redirect_to :action => 'index'
+      flash[:error] = _("Error, Failed merge of article ID:#{article_id} with ID: #{other_article_id}")
+      return
+    end
+
+    new_or_edit
+  end
+
+  # helper function to do validity checks on article_id
+  def check_article(id)
+    error = true;
+    article = Article.find_by_id(id)
+    if (article == nil)
+      flash[:error] = _("Error, Article with ID:#{id} does not exist")
+    elsif article.access_by?(current_user) == false
+      flash[:error] = _("Error, you do not have access to Article ID: #{id}")
+    else
+      error = false
+    end
+
+    if error
+      article = nil
+      redirect_to :action => 'index'
+    end
+    article
   end
 
   def destroy
